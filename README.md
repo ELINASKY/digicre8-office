@@ -9,11 +9,11 @@ npm start
 ```
 
 ## Build the Windows installer
-Locally: `npm run dist` (creates `dist/DigiCre8 Office Setup 0.1.0.exe`).
+Locally: `npm run dist` (creates `dist/DigiCre8 Office Setup 0.2.0.exe`).
 
 On GitHub: push the repo, then either
 - run the "Build Windows installer" workflow from the Actions tab, or
-- tag a release: `git tag v0.1.0 && git push origin v0.1.0` (the .exe is attached to the release).
+- tag a release: `git tag v0.2.0 && git push origin v0.2.0` (the .exe is attached to the release).
 
 Add `build/icon.ico` (256x256) before your first public release for a branded installer icon.
 

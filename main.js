@@ -77,22 +77,46 @@ ipcMain.handle('file:open', async (_e, requestedPath) => {
   }
 });
 
-ipcMain.handle('file:save', async (_e, { path: filePath, content, suggestedName, saveAs }) => {
+ipcMain.handle('file:save', async (_e, { path: filePath, content, suggestedName, saveAs, filters, noRecent }) => {
   let target = filePath;
   if (!target || saveAs) {
     const res = await dialog.showSaveDialog(win, {
       defaultPath: suggestedName || 'Untitled document.html',
-      filters: [{ name: 'DigiCre8 Writer document', extensions: ['html'] }, { name: 'Plain text', extensions: ['txt'] }]
+      filters: filters || [{ name: 'DigiCre8 Writer document', extensions: ['html'] }, { name: 'Plain text', extensions: ['txt'] }]
     });
     if (res.canceled || !res.filePath) return null;
     target = res.filePath;
   }
   try {
     fs.writeFileSync(target, content, 'utf8');
-    const recent = addRecent(target, 'writer');
+    const recent = noRecent ? readStore().recent : addRecent(target, 'writer');
     return { path: target, name: path.basename(target), recent };
   } catch (e) {
     dialog.showErrorBox('Could not save file', `${path.basename(target)} could not be saved.\n${e.message}`);
+    return null;
+  }
+});
+
+ipcMain.handle('edit:paste', () => { if (win) win.webContents.paste(); });
+
+const PDF_SIZES = ['A4', 'A5', 'Letter', 'Legal'];
+ipcMain.handle('file:exportPdf', async (_e, { suggestedName, size, landscape }) => {
+  const res = await dialog.showSaveDialog(win, {
+    defaultPath: suggestedName || 'Document.pdf',
+    filters: [{ name: 'PDF document', extensions: ['pdf'] }]
+  });
+  if (res.canceled || !res.filePath) return null;
+  try {
+    const data = await win.webContents.printToPDF({
+      pageSize: PDF_SIZES.includes(size) ? size : 'A4',
+      landscape: !!landscape,
+      printBackground: true,
+      preferCSSPageSize: true
+    });
+    fs.writeFileSync(res.filePath, data);
+    return { path: res.filePath, name: path.basename(res.filePath) };
+  } catch (e) {
+    dialog.showErrorBox('Could not create PDF', e.message);
     return null;
   }
 });

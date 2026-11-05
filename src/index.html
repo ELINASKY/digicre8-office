@@ -15,16 +15,17 @@
     <button class="icon-btn wide" id="themeBtn" title="Switch theme" aria-label="Switch theme"></button>
   </header>
   <main id="view"></main>
-  <dialog id="askDialog">
-    <form method="dialog" id="askForm">
-      <label id="askLabel" for="askInput"></label>
-      <input id="askInput" type="text" autocomplete="off">
+  <dialog id="dlg">
+    <form method="dialog">
+      <h3 id="dlgTitle"></h3>
+      <div id="dlgBody"></div>
       <div class="dialog-actions">
-        <button value="cancel" class="btn">Cancel</button>
-        <button value="ok" class="btn primary">Insert</button>
+        <button value="ok" class="btn primary" id="dlgOk">OK</button>
+        <button value="cancel" class="btn" id="dlgCancel">Cancel</button>
       </div>
     </form>
   </dialog>
+  <input type="file" id="picInput" accept="image/*" hidden>
   <div id="toast" role="status" aria-live="polite"></div>
   <script src="renderer.js"></script>
 </body>
