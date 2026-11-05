@@ -1,0 +1,30 @@
+{
+  "name": "digicre8-office",
+  "productName": "DigiCre8 Office",
+  "version": "0.1.0",
+  "description": "DigiCre8 Office: a creative productivity suite",
+  "main": "main.js",
+  "author": "DigiCre8",
+  "license": "UNLICENSED",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win --publish never"
+  },
+  "devDependencies": {
+    "electron": "^31.7.7",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.digicre8.office",
+    "productName": "DigiCre8 Office",
+    "directories": { "output": "dist", "buildResources": "build" },
+    "files": ["main.js", "preload.js", "src/**/*", "package.json"],
+    "win": { "target": [{ "target": "nsis", "arch": ["x64"] }] },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false,
+      "shortcutName": "DigiCre8 Office"
+    }
+  }
+}
