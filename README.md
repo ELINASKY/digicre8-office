@@ -19,7 +19,7 @@ Add `build/icon.ico` (256x256) before your first public release for a branded in
 
 ## Roadmap
 1. Shell and design system (this repo): launcher, tabs, ribbon, themes, open/save  
-2. Writer: all ribbon features built on the current editor (v0.3); next: TipTap engine, real pagination, .docx  
+2. Writer: all ribbon features (v0.3) and Word .docx open/save (v0.4); later: TipTap engine and real pagination  
 3. Sheets: grid, formula engine, charts, .xlsx  
 4. Slides: slide canvas, themes, .pptx export  
 5. Publisher and PDF tools  
@@ -27,5 +27,6 @@ Add `build/icon.ico` (256x256) before your first public release for a branded in
 
 ## Project layout
 - `main.js`: Electron main process (window, file dialogs, settings, recent files)
+- `docx-io.js`: Word (.docx) import and export (runs in the main process)
 - `preload.js`: safe bridge between the UI and the main process
 - `src/`: the interface (`index.html`, `styles.css`, `renderer.js`)

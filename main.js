@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, dialog, Menu, nativeTheme, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const { importDocx, exportDocx } = require('./docx-io');
 
 const storeFile = () => path.join(app.getPath('userData'), 'settings.json');
 const defaults = { theme: 'system', recent: [] };
@@ -19,6 +20,9 @@ function addRecent(filePath, appKey) {
   writeStore(s);
   return s.recent;
 }
+
+// Only files the user picked in a dialog (or reopened from Recent) may be written by the interface.
+const approved = new Set();
 
 let win;
 function createWindow() {
@@ -62,12 +66,18 @@ ipcMain.handle('file:open', async (_e, requestedPath) => {
   } else {
     const res = await dialog.showOpenDialog(win, {
       properties: ['openFile'],
-      filters: [{ name: 'Documents', extensions: ['html', 'htm', 'txt', 'md'] }, { name: 'All files', extensions: ['*'] }]
+      filters: [{ name: 'Documents', extensions: ['docx', 'html', 'htm', 'txt', 'md'] }, { name: 'Word documents', extensions: ['docx'] }, { name: 'All files', extensions: ['*'] }]
     });
     if (res.canceled || !res.filePaths[0]) return null;
     filePath = res.filePaths[0];
   }
   try {
+    approved.add(filePath);
+    if (/\.docx$/i.test(filePath)) {
+      const doc = await importDocx(filePath);
+      const recent = addRecent(filePath, 'writer');
+      return { path: filePath, name: path.basename(filePath), kind: 'docx', content: doc.html, meta: doc.meta, recent };
+    }
     const content = fs.readFileSync(filePath, 'utf8');
     const recent = addRecent(filePath, 'writer');
     return { path: filePath, name: path.basename(filePath), content, recent };
@@ -79,6 +89,7 @@ ipcMain.handle('file:open', async (_e, requestedPath) => {
 
 ipcMain.handle('file:save', async (_e, { path: filePath, content, suggestedName, saveAs, filters, noRecent }) => {
   let target = filePath;
+  if (target && !saveAs && !approved.has(target)) return null;
   if (!target || saveAs) {
     const res = await dialog.showSaveDialog(win, {
       defaultPath: suggestedName || 'Untitled document.html',
@@ -86,6 +97,7 @@ ipcMain.handle('file:save', async (_e, { path: filePath, content, suggestedName,
     });
     if (res.canceled || !res.filePath) return null;
     target = res.filePath;
+    approved.add(target);
   }
   try {
     fs.writeFileSync(target, content, 'utf8');
@@ -151,4 +163,33 @@ ipcMain.handle('file:printPdf', async (_e, opts) => {
 
 ipcMain.handle('open:external', (_e, url) => {
   if (typeof url === 'string' && /^(https?:\/\/|mailto:)/i.test(url)) return shell.openExternal(url);
+});
+
+ipcMain.handle('file:chooseSave', async (_e, { suggestedName, filters } = {}) => {
+  const res = await dialog.showSaveDialog(win, {
+    defaultPath: typeof suggestedName === 'string' ? suggestedName : 'Untitled document.docx',
+    filters: Array.isArray(filters) ? filters : [{ name: 'Word document', extensions: ['docx'] }]
+  });
+  if (res.canceled || !res.filePath) return null;
+  let target = res.filePath;
+  if (!/\.(docx|html?|txt)$/i.test(target)) target += '.docx';
+  approved.add(target);
+  return target;
+});
+
+ipcMain.handle('file:saveDocx', async (_e, opts) => {
+  const target = opts && opts.path;
+  if (typeof target !== 'string' || !/\.docx$/i.test(target) || !approved.has(target)) return null;
+  try {
+    const buf = await exportDocx({
+      html: String(opts.html || ''), header: String(opts.header || ''), footer: String(opts.footer || ''),
+      size: opts.size, landscape: !!opts.landscape, margin: opts.margin, title: opts.title, font: opts.font
+    });
+    fs.writeFileSync(target, buf);
+    const recent = addRecent(target, 'writer');
+    return { path: target, name: path.basename(target), recent };
+  } catch (e) {
+    dialog.showErrorBox('Could not save Word file', e.message);
+    return null;
+  }
 });

@@ -856,3 +856,54 @@ document.addEventListener('keydown', e => {
   const t = activeTab();
   if (t && t.app === 'writer' && t.tool) { t.tool = null; applyPage(t); refreshState(); }
 });
+
+
+/* ================= Word (.docx) export preparation ================= */
+const loadImage = src => new Promise((res, rej) => { const i = new Image(); const t = setTimeout(() => rej(new Error('timeout')), 4000); i.onload = () => { clearTimeout(t); res(i); }; i.onerror = () => { clearTimeout(t); rej(new Error('load')); }; i.src = src; });
+async function svgToPng(svgEl, w, h) {
+  const c = svgEl.cloneNode(true);
+  c.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+  c.setAttribute('width', w); c.setAttribute('height', h);
+  const img = await loadImage('data:image/svg+xml;charset=utf-8,' + encodeURIComponent(new XMLSerializer().serializeToString(c)));
+  const cv = document.createElement('canvas');
+  cv.width = w * 2; cv.height = h * 2;
+  const g = cv.getContext('2d');
+  g.scale(2, 2); g.drawImage(img, 0, 0, w, h);
+  return cv.toDataURL('image/png');
+}
+async function docxPayload(tab) {
+  const root = document.createElement('div');
+  root.innerHTML = tab.html;
+  $$('del.tc', root).forEach(n => n.remove());
+  $$('ins.tc', root).forEach(n => n.replaceWith(...n.childNodes));
+  $$('.cb', root).forEach(n => n.remove());
+  $$('.pb', root).forEach(n => { const d = document.createElement('div'); d.setAttribute('style', 'page-break-after: always'); n.replaceWith(d); });
+  for (const o of $$('.obj', root)) {
+    const sv = $('svg', o);
+    if (!sv) continue;
+    const w = parseInt(o.style.width, 10) || 120, h = parseInt(o.style.height, 10) || 120;
+    try {
+      const im = document.createElement('img');
+      im.src = await svgToPng(sv, w, h); im.width = w; im.height = h;
+      o.replaceWith(im);
+    } catch (e) { o.remove(); }
+  }
+  $$('[contenteditable]', root).forEach(n => n.removeAttribute('contenteditable'));
+  const th = DOC_THEMES[tab.theme] || {};
+  return { html: root.innerHTML, header: tab.hOn ? cleanHtml(tab.header || '') : '', footer: tab.fOn ? cleanHtml(tab.footer || '') : '',
+    size: tab.size, landscape: tab.landscape, margin: tab.margin, title: baseName(tab), font: tab.font || th.font || 'Segoe UI' };
+}
+function lossyFeatures(tab) {
+  const root = document.createElement('div');
+  root.innerHTML = tab.html || '';
+  const out = [];
+  if ((tab.ink || []).length) out.push('drawings');
+  if (tab.watermark) out.push('watermark');
+  if (tab.border && tab.border !== 'none') out.push('page border');
+  if (tab.cols > 1) out.push('columns');
+  if (root.querySelector('.cm')) out.push('comments');
+  if (root.querySelector('ins.tc, del.tc')) out.push('tracked changes (saved as accepted)');
+  if (root.querySelector('.obj svg')) out.push('shapes and charts (saved as pictures)');
+  if (root.querySelector('.smart, .eq, .textbox')) out.push('SmartArt, equations and text boxes lose their layout');
+  return out;
+}

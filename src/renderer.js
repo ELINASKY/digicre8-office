@@ -13,7 +13,7 @@ const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const view = $('#view');
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-const baseName = t => t.title.replace(/\.(html?|txt)$/i, '');
+const baseName = t => t.title.replace(/\.(html?|txt|docx)$/i, '');
 
 function newTab(app, extra = {}) {
   const tab = { id: state.nextId++, app, title: app === 'home' ? 'Home' : 'Untitled', path: null, dirty: false, html: null,
@@ -444,7 +444,7 @@ const H = {
     <dt>Ctrl+N / T</dt><dd>New tab</dd><dt>Ctrl+O</dt><dd>Open</dd><dt>Ctrl+S</dt><dd>Save</dd><dt>Ctrl+Shift+S</dt><dd>Save as</dd>
     <dt>Ctrl+P</dt><dd>Print (via PDF)</dd><dt>Ctrl+F / H</dt><dd>Find / Replace</dd><dt>Ctrl+B / I / U</dt><dd>Bold / Italic / Underline</dd>
     <dt>Ctrl+Z / Y</dt><dd>Undo / Redo</dd><dt>Ctrl+W</dt><dd>Close tab</dd></dl>` }),
-  about: () => dialog({ title: 'About DigiCre8 Office', ok: '', html: '<p>DigiCre8 Office, version 0.3.0.<br>A creative productivity suite.</p>' })
+  about: () => dialog({ title: 'About DigiCre8 Office', ok: '', html: '<p>DigiCre8 Office, version 0.4.0.<br>A creative productivity suite.</p>' })
 };
 function run(cmd, tab, arg) {
   const f = H[cmd];
@@ -657,11 +657,13 @@ async function bsGo(tab, k) {
     p.innerHTML = `<h2>Share</h2><p class="muted">Sharing and co-authoring arrive in a later update. For now, use Export to create a PDF you can send.</p>`;
   } else if (k === 'export') {
     p.innerHTML = `<h2>Export</h2><div class="bs-actions">
+      <button class="btn" id="exDocx"><b>Word document (.docx)</b><br><span class="muted">Opens in Microsoft Word and other apps</span></button>
       <button class="btn" id="exPdf"><b>Create PDF</b><br><span class="muted">Fixed layout, ready to share</span></button>
       <button class="btn" id="exTxt"><b>Plain text (.txt)</b><br><span class="muted">Text only, no formatting</span></button>
       <button class="btn" id="exHtml"><b>Web page (.html)</b><br><span class="muted">Keeps formatting and images</span></button></div>`;
     $('#exPdf').addEventListener('click', () => exportPdf(tab));
-    $('#exHtml').addEventListener('click', () => { closeBackstage(); saveTab(tab, true); });
+    $('#exDocx').addEventListener('click', () => { closeBackstage(); saveTab(tab, true, 'docx'); });
+    $('#exHtml').addEventListener('click', () => { closeBackstage(); saveTab(tab, true, 'html'); });
     $('#exTxt').addEventListener('click', async () => {
       const res = await window.digicre8.saveFile({ content: page.innerText, suggestedName: baseName(tab) + '.txt', saveAs: true, noRecent: true, filters: [{ name: 'Plain text', extensions: ['txt'] }] });
       if (res) { closeBackstage(); toast('Exported ' + res.name); }
@@ -678,7 +680,11 @@ async function openFileDialog(path) {
   if (!res) return;
   state.settings.recent = res.recent;
   let html, meta = {};
-  if (/\.html?$/i.test(res.name)) {
+  if (res.kind === 'docx') {
+    const holder = new DOMParser().parseFromString(`<meta name="digicre8" content="${encodeURIComponent(JSON.stringify(res.meta || {}))}">`, 'text/html');
+    meta = readMeta(holder);
+    html = cleanHtml(res.content) || '<p><br></p>';
+  } else if (/\.html?$/i.test(res.name)) {
     const doc = new DOMParser().parseFromString(res.content, 'text/html');
     doc.querySelectorAll('script, iframe, object, embed').forEach(n => n.remove());
     doc.querySelectorAll('*').forEach(n => [...n.attributes].forEach(at => { if (/^on/i.test(at.name)) n.removeAttribute(at.name); }));
@@ -693,21 +699,43 @@ async function openFileDialog(path) {
   else newTab('writer', extra);
   toast('Opened ' + res.name);
 }
-async function saveTab(tab, saveAs) {
+const SAVE_TYPES = {
+  docx: { name: 'Word document', extensions: ['docx'] },
+  html: { name: 'DigiCre8 web document (keeps every feature)', extensions: ['html'] },
+  txt: { name: 'Plain text', extensions: ['txt'] }
+};
+function htmlDocument(tab) {
+  return `<!DOCTYPE html>\n<html><head><meta charset="utf-8">${docMetaTag(tab)}<title>${esc(baseName(tab))}</title>\n<style>body{font-family:"Segoe UI",sans-serif;line-height:1.3;max-width:800px;margin:40px auto;padding:0 24px}table{border-collapse:collapse}td,th{border:1px solid #b9bdd0;padding:6px 10px}img{max-width:100%}</style></head>\n<body>\n${tab.html}\n</body></html>`;
+}
+async function saveTab(tab, saveAs, prefer = 'docx') {
   if (tab.app !== 'writer') return;
   const page = $('#page');
   const restorePreview = plusBeforeSave(tab);
   tab.html = page.innerHTML;
-  const isTxt = tab.path && /\.txt$/i.test(tab.path);
-  const content = isTxt ? page.innerText :
-    `<!DOCTYPE html>\n<html><head><meta charset="utf-8">${docMetaTag(tab)}<title>${esc(baseName(tab))}</title>\n<style>body{font-family:"Segoe UI",sans-serif;line-height:1.3;max-width:800px;margin:40px auto;padding:0 24px}table{border-collapse:collapse}td,th{border:1px solid #b9bdd0;padding:6px 10px}img{max-width:100%}</style></head>\n<body>\n${tab.html}\n</body></html>`;
-  restorePreview();
-  const res = await window.digicre8.saveFile({ path: tab.path, content, suggestedName: baseName(tab) + '.html', saveAs });
+  const plain = page.innerText;
+  let target = tab.path;
+  if (!target || saveAs) {
+    const order = [prefer, ...['docx', 'html', 'txt'].filter(k => k !== prefer)];
+    target = await window.digicre8.chooseSave({ suggestedName: baseName(tab) + '.' + prefer, filters: order.map(k => SAVE_TYPES[k]) });
+    if (!target) { restorePreview(); return; }
+  }
+  let res = null, note = '';
+  if (/\.docx$/i.test(target)) {
+    const payload = await docxPayload(tab);
+    restorePreview();
+    res = await window.digicre8.saveDocx({ path: target, ...payload });
+    const lost = lossyFeatures(tab);
+    if (res && lost.length && !tab.lossNoted) { note = ` Not stored in Word files: ${lost.join(', ')}.`; tab.lossNoted = true; }
+  } else {
+    const content = /\.txt$/i.test(target) ? plain : htmlDocument(tab);
+    restorePreview();
+    res = await window.digicre8.saveFile({ path: target, content });
+  }
   if (!res) return;
   tab.path = res.path; tab.title = res.name; tab.dirty = false;
   state.settings.recent = res.recent;
   renderTabs();
-  toast('Saved ' + res.name);
+  toast('Saved ' + res.name + '.' + note);
 }
 
 /* ================= Render & shortcuts ================= */

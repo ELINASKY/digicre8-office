@@ -1,7 +1,7 @@
 {
   "name": "digicre8-office",
   "productName": "DigiCre8 Office",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "DigiCre8 Office: a creative productivity suite",
   "main": "main.js",
   "author": "DigiCre8",
@@ -17,14 +17,37 @@
   "build": {
     "appId": "com.digicre8.office",
     "productName": "DigiCre8 Office",
-    "directories": { "output": "dist", "buildResources": "build" },
-    "files": ["main.js", "preload.js", "src/**/*", "package.json"],
-    "win": { "target": [{ "target": "nsis", "arch": ["x64"] }] },
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "docx-io.js",
+      "src/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "perMachine": false,
       "shortcutName": "DigiCre8 Office"
     }
+  },
+  "dependencies": {
+    "html-to-docx": "^1.8.0",
+    "jszip": "^3.10.2",
+    "mammoth": "^1.13.0"
   }
 }
