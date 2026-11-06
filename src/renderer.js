@@ -42,9 +42,11 @@ function dialog({ title, fields = [], html = '', ok = 'OK', onBuild }) {
     for (const f of fields) {
       const l = document.createElement('label');
       l.textContent = f.label;
-      const i = document.createElement('input');
-      i.type = f.type || 'text'; i.name = f.name; i.value = f.value ?? '';
-      if (f.min) i.min = f.min; if (f.max) i.max = f.max;
+      let i;
+      if (f.type === 'textarea') { i = document.createElement('textarea'); i.rows = f.rows || 5; }
+      else if (f.type === 'select') { i = document.createElement('select'); (f.opts || []).forEach(([t, v]) => i.add(new Option(t, v))); }
+      else { i = document.createElement('input'); i.type = f.type || 'text'; if (f.min) i.min = f.min; if (f.max) i.max = f.max; }
+      i.name = f.name; i.value = f.value ?? '';
       l.appendChild(i); body.appendChild(l);
     }
     if (html) body.insertAdjacentHTML('beforeend', html);
@@ -55,11 +57,11 @@ function dialog({ title, fields = [], html = '', ok = 'OK', onBuild }) {
     dlg.addEventListener('close', () => {
       if (dlg.returnValue !== 'ok') return resolve(null);
       const out = {};
-      $$('input[name]', body).forEach(i => { out[i.name] = i.value; });
+      $$('[name]', body).forEach(i => { out[i.name] = i.value; });
       resolve(out);
     }, { once: true });
     dlg.showModal();
-    const first = $('input', body); if (first) first.focus();
+    const first = $('input,textarea,select', body); if (first) first.focus();
   });
 }
 
@@ -170,7 +172,16 @@ function renderSoon(tab) {
 }
 
 /* ================= Writer: data ================= */
-const PAGES = { A4: [794, 1123], Letter: [816, 1056], Legal: [816, 1344], A5: [559, 794] };
+const PAGES = { A4: [794, 1123], Letter: [816, 1056], Legal: [816, 1344], A5: [559, 794], 'Envelope DL': [416, 832] };
+const DOC_THEMES = {
+  Default: {},
+  Modern:  { hf: '"Segoe UI Semibold","Segoe UI",sans-serif', hc: '#4F6BF2' },
+  Classic: { hf: 'Georgia,serif', hc: '#1b1b1f', font: 'Georgia' },
+  Bold:    { hf: '"Trebuchet MS",sans-serif', hc: '#D63A7C', font: 'Verdana' },
+  Elegant: { hf: 'Cambria,serif', hc: '#7A4FE0', font: 'Cambria' },
+  Fresh:   { hf: 'Calibri,sans-serif', hc: '#12A37A', font: 'Calibri' },
+  Sunset:  { hf: '"Trebuchet MS",sans-serif', hc: '#F2701B' }
+};
 const PT = [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 36, 48, 72];
 const FONTS = ['Segoe UI', 'Arial', 'Calibri', 'Cambria', 'Georgia', 'Times New Roman', 'Courier New', 'Verdana', 'Trebuchet MS'];
 const ICON = {
@@ -186,7 +197,21 @@ const ICON = {
   link: 'M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1 M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1',
   save: 'M5 4h11l3 3v13H5z M8 4v5h7V4 M8 20v-6h8v6',
   undo: 'M9 14L4 9l5-5 M4 9h10a6 6 0 0 1 0 12h-3',
-  redo: 'M15 14l5-5-5-5 M20 9H10a6 6 0 0 0 0 12h3'
+  redo: 'M15 14l5-5-5-5 M20 9H10a6 6 0 0 0 0 12h3',
+  pen: 'M4 20l1-4L16 5l3 3L8 19z M14 7l3 3',
+  pencil: 'M3 21l1-5L17 3l4 4L8 20z M15 5l4 4',
+  marker: 'M9 16l-4 4h5l2-2 M8 15l8-8 3 3-8 8z',
+  eraser: 'M4 15l8-8 8 8-5 5H8z M9 20h11',
+  shapes: 'M4 4h8v8H4z M16 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z M6 20l4-7 4 7z',
+  chart: 'M4 20V4 M4 20h16 M8 20v-6 M13 20V9 M18 20v-9',
+  cover: 'M6 3h12v18H6z M9 8h6 M9 12h6',
+  header: 'M4 4h16v16H4z M4 9h16',
+  mail: 'M4 6h16v12H4z M4 7l8 6 8-6',
+  merge: 'M4 6h8 M4 12h8 M4 18h8 M14 12h6 M17 9l3 3-3 3',
+  note: 'M5 4h14v12H9l-4 4z',
+  shield: 'M12 3l8 3v6c0 5-3.500 8-8 9-4.500-1-8-4-8-9V6z',
+  eq: 'M5 9h14 M5 15h14',
+  box: 'M4 5h16v14H4z M8 10h8 M8 14h5'
 };
 const svg = n => `<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${ICON[n]}"/></svg>`;
 
@@ -195,10 +220,11 @@ const B = (label, cmd, o = {}) => ({ label, cmd, ...o });
 const D = (label, o = {}) => ({ label, off: true, ...o });
 const SEL = (cmd, label, opts, def) => ({ sel: cmd, label, opts, def });
 const COL = (cmd, label, def, glyph) => ({ col: cmd, label, def, glyph });
+const NUM = (cmd, label, def, step = 1) => ({ num: cmd, label, def, step });
 
 const RIBBON = {
   Home: [
-    ['Clipboard', [B('Paste', 'paste', { big: 1, ic: 'paste' }), B('Cut', 'cut'), B('Copy', 'copy'), D('Format Painter')]],
+    ['Clipboard', [B('Paste', 'paste', { big: 1, ic: 'paste' }), B('Cut', 'cut'), B('Copy', 'copy'), B('Format Painter', 'painter', { flag: 'painter' })]],
     ['Font', [SEL('fontName', 'Font', FONTS.map(f => [f, f]), 'Segoe UI'), SEL('fontSize', 'Font size', PT.map(p => [p, p]), 11),
       B('A▲', 'grow', { title: 'Increase font size' }), B('A▼', 'shrink', { title: 'Decrease font size' }),
       B('B', 'bold', { cls: 'b', st: 1, title: 'Bold (Ctrl+B)' }), B('I', 'italic', { cls: 'i', st: 1, title: 'Italic (Ctrl+I)' }),
@@ -215,50 +241,62 @@ const RIBBON = {
     ['Editing', [B('Find', 'find', { big: 1, ic: 'find' }), B('Replace', 'replace'), B('Select All', 'selectAll')]]
   ],
   Insert: [
-    ['Pages', [D('Cover Page'), D('Blank Page'), B('Page Break', 'pagebreak', { big: 1, ic: 'pagebreak' })]],
+    ['Pages', [B('Cover Page', 'cover', { big: 1, ic: 'cover' }), B('Blank Page', 'blankpage'), B('Page Break', 'pagebreak', { ic: 'pagebreak' })]],
     ['Tables', [B('Table', 'table', { big: 1, ic: 'table' })]],
-    ['Illustrations', [B('Pictures', 'picture', { big: 1, ic: 'picture' }), D('Shapes'), D('Icons'), D('Charts'), D('SmartArt')]],
-    ['Links', [B('Link', 'link', { big: 1, ic: 'link' }), B('Remove Link', 'unlink'), D('Bookmark')]],
-    ['Header & Footer', [D('Header'), D('Footer'), D('Page Number')]],
-    ['Text', [D('Text Box'), B('Date & Time', 'datetime'), B('Horizontal Line', 'insertHorizontalRule')]],
-    ['Symbols', [D('Equation'), B('Symbol', 'symbol')]]
+    ['Illustrations', [B('Pictures', 'picture', { big: 1, ic: 'picture' }), B('Shapes', 'shapes', { big: 1, ic: 'shapes' }), B('Icons', 'icons'),
+      B('Charts', 'chart', { big: 1, ic: 'chart' }), B('SmartArt', 'smartart')]],
+    ['Links', [B('Link', 'link', { big: 1, ic: 'link' }), B('Remove Link', 'unlink'), B('Bookmark', 'bookmark')]],
+    ['Header & Footer', [B('Header', 'header', { flag: 'hOn' }), B('Footer', 'footer', { flag: 'fOn' }), B('Page Number', 'pagenum')]],
+    ['Text', [B('Text Box', 'textbox', { ic: 'box' }), B('Date & Time', 'datetime'), B('Horizontal Line', 'insertHorizontalRule')]],
+    ['Symbols', [B('Equation', 'equation', { ic: 'eq' }), B('Symbol', 'symbol')]]
   ],
   Draw: [
-    ['Drawing Tools', [D('Pen', { big: 1 }), D('Pencil', { big: 1 }), D('Highlighter', { big: 1 }), D('Eraser', { big: 1 })]],
-    ['Convert', [D('Ink to Shape'), D('Ink to Math')]]
+    ['Drawing Tools', [B('Pen', 'ink', { big: 1, ic: 'pen', arg: 'pen', tool: 1 }), B('Pencil', 'ink', { big: 1, ic: 'pencil', arg: 'pencil', tool: 1 }),
+      B('Highlighter', 'ink', { big: 1, ic: 'marker', arg: 'highlighter', tool: 1 }), B('Eraser', 'ink', { big: 1, ic: 'eraser', arg: 'eraser', tool: 1 }),
+      COL('inkcolor', 'Ink color', '#1f2a44', 'Ink'),
+      SEL('inkw', 'Ink thickness', [['Thin', 0.6], ['Medium', 1], ['Thick', 2], ['Extra thick', 3.5]], 1)]],
+    ['Convert', [B('Ink to Shape', 'ink2shape', { title: 'Turn the last stroke into a clean line, rectangle or ellipse' }),
+      D('Ink to Math', { title: 'Ink to Math needs handwriting recognition, which is not included yet' }), B('Clear Ink', 'clearink')]]
   ],
   Design: [
-    ['Document Formatting', [D('Themes'), SEL('docFont', 'Document font', [['Default', ''], ...FONTS.map(f => [f, f])], '')]],
-    ['Page Background', [D('Watermark'), COL('pagecolor', 'Page color', '#ffffff', 'Page color'), D('Page Borders')]]
+    ['Document Formatting', [SEL('theme', 'Themes', Object.keys(DOC_THEMES).map(k => [k, k]), t => t.theme || 'Default'),
+      SEL('docFont', 'Document font', [['Default font', ''], ...FONTS.map(f => [f, f])], t => t.font || '')]],
+    ['Page Background', [B('Watermark', 'watermark'), COL('pagecolor', 'Page color', '#ffffff', 'Page color'), B('Page Borders', 'pageborder')]]
   ],
   Layout: [
     ['Page Setup', [SEL('margin', 'Margins', [['Normal', 96], ['Narrow', 48], ['Moderate', 72], ['Wide', 144]], t => t.margin),
       SEL('orient', 'Orientation', [['Portrait', 'portrait'], ['Landscape', 'landscape']], t => t.landscape ? 'landscape' : 'portrait'),
-      SEL('size', 'Size', Object.keys(PAGES).map(k => [k, k]), t => t.size), D('Columns'), D('Breaks')]],
-    ['Paragraph', [D('Indent'), D('Spacing')]],
-    ['Arrange', [D('Position'), D('Wrap Text')]]
+      SEL('size', 'Size', Object.keys(PAGES).map(k => [k, k]), t => t.size),
+      SEL('cols', 'Columns', [['1 column', 1], ['2 columns', 2], ['3 columns', 3]], t => t.cols || 1),
+      { ...SEL('breaks', 'Breaks', [['Breaks…', ''], ['Page break', 'page'], ['Column break', 'column'], ['Section break (next page)', 'section']], ''), reset: 1 }]],
+    ['Paragraph', [NUM('indentL', 'Indent left (cm)', 0, 0.1), NUM('indentR', 'Indent right (cm)', 0, 0.1), NUM('spaceB', 'Space before (pt)', 0), NUM('spaceA', 'Space after (pt)', 0)]],
+    ['Arrange', [SEL('objpos', 'Position', [['Position: in line', 'inline'], ['Left', 'left'], ['Center', 'center'], ['Right', 'right']], 'inline'),
+      SEL('objwrap', 'Wrap text', [['Wrap: in line', 'inline'], ['Square (text wraps)', 'square'], ['Top and bottom', 'block']], 'inline')]]
   ],
   References: [
-    ['Table of Contents', [B('Table of Contents', 'toc', { big: 1, ic: 'toc' }), D('Update Table')]],
-    ['Footnotes', [D('Insert Footnote'), D('Insert Endnote')]],
-    ['Citations & Bibliography', [D('Insert Citation'), D('Bibliography')]],
-    ['Captions', [D('Insert Caption'), D('Table of Figures')]]
+    ['Table of Contents', [B('Table of Contents', 'toc', { big: 1, ic: 'toc' }), B('Update Table', 'updatetoc')]],
+    ['Footnotes', [B('Insert Footnote', 'footnote', { ic: 'note' }), B('Insert Endnote', 'endnote')]],
+    ['Citations & Bibliography', [B('Insert Citation', 'cite'), B('Bibliography', 'biblio')]],
+    ['Captions', [B('Insert Caption', 'caption'), B('Table of Figures', 'tof')]]
   ],
   Mailings: [
-    ['Create', [D('Envelopes'), D('Labels')]],
-    ['Start Mail Merge', [D('Start Mail Merge'), D('Select Recipients'), D('Edit Recipient List')]],
-    ['Finish', [D('Finish & Merge')]]
+    ['Create', [B('Envelopes', 'envelopes', { big: 1, ic: 'mail' }), B('Labels', 'labels', { big: 1, ic: 'box' })]],
+    ['Start Mail Merge', [B('Start Mail Merge', 'mmstart', { big: 1, ic: 'merge' }), B('Select Recipients', 'recipients'), B('Edit Recipient List', 'editrecips')]],
+    ['Write & Insert Fields', [B('Insert Merge Field', 'mergefield')]],
+    ['Preview Results', [B('Preview Results', 'preview', { flag: 'preview' }), B('◀', 'prevrec', { title: 'Previous record' }), B('▶', 'nextrec', { title: 'Next record' })]],
+    ['Finish', [B('Finish & Merge', 'finishmerge', { big: 1, ic: 'check' })]]
   ],
   Review: [
     ['Proofing', [B('Spelling', 'spelling', { big: 1, ic: 'check' }), B('Word Count', 'wordcount', { big: 1, ic: 'count' })]],
     ['Speech', [B('Read Aloud', 'readaloud', { big: 1, ic: 'speaker' })]],
-    ['Comments', [D('New Comment'), D('Delete'), D('Show Comments')]],
-    ['Tracking', [D('Track Changes'), D('Accept'), D('Reject')]],
-    ['Protect', [D('Restrict Editing')]]
+    ['Comments', [B('New Comment', 'newcomment', { big: 1, ic: 'note' }), B('Delete', 'delcomment'), B('Show Comments', 'showcomments', { flag: 'cmOn' })]],
+    ['Tracking', [B('Track Changes', 'track', { flag: 'track', big: 1, ic: 'pen' })]],
+    ['Changes', [B('Accept', 'accept'), B('Reject', 'reject'), B('Accept All', 'acceptall'), B('Reject All', 'rejectall')]],
+    ['Protect', [B('Restrict Editing', 'restrict', { flag: 'restrict', big: 1, ic: 'shield' })]]
   ],
   View: [
     ['Views', [B('Print Layout', 'viewmode', { arg: 'print' }), B('Web Layout', 'viewmode', { arg: 'web' }), B('Read Mode', 'viewmode', { arg: 'read' }), B('Focus', 'focus')]],
-    ['Show', [D('Ruler'), D('Gridlines'), D('Navigation Pane')]],
+    ['Show', [B('Ruler', 'ruler', { flag: 'rulerOn' }), B('Gridlines', 'grid', { flag: 'gridOn' }), B('Navigation Pane', 'nav', { flag: 'navOn' })]],
     ['Zoom', [B('Zoom Out', 'zoom', { arg: -10 }), B('Zoom In', 'zoom', { arg: 10 }), B('100%', 'zoom', { arg: 0 })]]
   ],
   Help: [
@@ -267,10 +305,10 @@ const RIBBON = {
 };
 
 /* ================= Writer: selection helpers ================= */
-let lastRange = null;
+let lastRange = null, lastHost = null;
 function restore() {
   const page = $('#page'); if (!page) return;
-  page.focus();
+  (lastHost && lastHost.isConnected ? lastHost : page).focus();
   if (lastRange) { const s = getSelection(); s.removeAllRanges(); s.addRange(lastRange); }
 }
 function exec(c, v = null) {
@@ -281,10 +319,12 @@ function exec(c, v = null) {
 function blocks() {
   const s = getSelection(); if (!s.rangeCount) return [];
   const r = s.getRangeAt(0);
-  return [...$('#page').children].filter(el => r.intersectsNode(el));
+  const host = lastHost && lastHost.isConnected ? lastHost : $('#page');
+  return [...host.children].filter(el => r.intersectsNode(el));
 }
 function touch(tab) {
   const p = $('#page'); if (!p) return;
+  plusTouch(tab);
   tab.html = p.innerHTML;
   if (!tab.dirty) { tab.dirty = true; renderTabs(); }
   updateCounts();
@@ -311,10 +351,11 @@ function applyPage(tab) {
   page.classList.toggle('web', tab.view === 'web');
   page.contentEditable = tab.view === 'read' ? 'false' : 'true';
   $('#pageinfo').textContent = `${tab.size} · ${land ? 'Landscape' : 'Portrait'}`;
-  $('#pageStyle').textContent = `@page { size: ${tab.size} ${land ? 'landscape' : 'portrait'}; margin: ${tab.margin}px; }`;
+  $('#pageStyle').textContent = `@page { size: ${land ? h : w}px ${land ? w : h}px; margin: ${tab.margin}px; }`;
+  plusApplyPage(tab);
 }
-function setSize(tab, pt) {
-  restore();
+function setSize(tab, pt, noRestore) {
+  if (!noRestore) restore();
   const s = getSelection();
   if (!s.rangeCount || s.isCollapsed) return toast('Select some text first');
   document.execCommand('styleWithCSS', false, false);
@@ -354,10 +395,12 @@ const H = {
     document.execCommand('insertHTML', false, '<table>' + ('<tr>' + '<td><br></td>'.repeat(cols) + '</tr>').repeat(rows) + '</table><p><br></p>');
   },
   link: async () => {
-    const v = await dialog({ title: 'Insert link', ok: 'Insert', fields: [{ label: 'Address (https://…)', name: 'url' }] });
+    const v = await dialog({ title: 'Insert link', ok: 'Insert', fields: [{ label: 'Address (https://… or #bookmark)', name: 'url' }] });
     if (!v || !v.url.trim()) return;
-    if (!/^(https?:\/\/|mailto:)/i.test(v.url.trim())) return toast('Links must start with https://, http:// or mailto:');
-    exec('createLink', v.url.trim());
+    let u = v.url.trim();
+    if (/^#[\w-]+$/.test(u)) u = '#bm_' + u.slice(1).replace(/^bm_/, '');
+    else if (!/^(https?:\/\/|mailto:)/i.test(u)) return toast('Use https://, http://, mailto: or #bookmarkname');
+    exec('createLink', u);
   },
   symbol: async () => {
     const syms = '© ® ™ € £ ¥ ° ± × ÷ ≠ ≤ ≥ ∞ π Ω µ § ¶ † ‡ • … « » “ ” ‘ ’ – — ← → ↑ ↓ ✓ ★'.split(' ');
@@ -399,9 +442,9 @@ const H = {
   zoom: (t, d) => { state.zoom = d === 0 ? 100 : Math.min(200, Math.max(50, state.zoom + d)); applyZoom(); },
   shortcuts: () => dialog({ title: 'Keyboard shortcuts', ok: '', html: `<dl class="info">
     <dt>Ctrl+N / T</dt><dd>New tab</dd><dt>Ctrl+O</dt><dd>Open</dd><dt>Ctrl+S</dt><dd>Save</dd><dt>Ctrl+Shift+S</dt><dd>Save as</dd>
-    <dt>Ctrl+P</dt><dd>Print</dd><dt>Ctrl+F / H</dt><dd>Find / Replace</dd><dt>Ctrl+B / I / U</dt><dd>Bold / Italic / Underline</dd>
+    <dt>Ctrl+P</dt><dd>Print (via PDF)</dd><dt>Ctrl+F / H</dt><dd>Find / Replace</dd><dt>Ctrl+B / I / U</dt><dd>Bold / Italic / Underline</dd>
     <dt>Ctrl+Z / Y</dt><dd>Undo / Redo</dd><dt>Ctrl+W</dt><dd>Close tab</dd></dl>` }),
-  about: () => dialog({ title: 'About DigiCre8 Office', ok: '', html: '<p>DigiCre8 Office, version 0.2.0.<br>A creative productivity suite.</p>' })
+  about: () => dialog({ title: 'About DigiCre8 Office', ok: '', html: '<p>DigiCre8 Office, version 0.3.0.<br>A creative productivity suite.</p>' })
 };
 function run(cmd, tab, arg) {
   const f = H[cmd];
@@ -449,8 +492,15 @@ function itemEl(it, tab) {
     s.className = 'rsel'; s.title = it.label; s.setAttribute('aria-label', it.label);
     for (const [l, v] of it.opts) s.add(new Option(l, v));
     s.value = String(typeof it.def === 'function' ? it.def(tab) : it.def);
-    s.addEventListener('change', () => run(it.sel, tab, s.value));
+    s.addEventListener('change', () => { run(it.sel, tab, s.value); if (it.reset) s.value = ''; });
     return s;
+  }
+  if (it.num) {
+    const l = document.createElement('label');
+    l.className = 'rnum'; l.title = it.label;
+    l.innerHTML = `<span>${it.label.replace(/ \(.*\)$/, '')}</span><input type="number" step="${it.step}" min="0" value="${it.def}" aria-label="${it.label}">`;
+    $('input', l).addEventListener('change', e => run(it.num, tab, e.target.value));
+    return l;
   }
   if (it.col) {
     const l = document.createElement('label');
@@ -464,8 +514,10 @@ function itemEl(it, tab) {
   b.className = 'rb' + (it.big ? ' big' : '') + (it.cls ? ' ' + it.cls : '');
   b.innerHTML = (it.ic ? svg(it.ic) : '') + `<span>${it.label}</span>`;
   if (it.title) b.title = it.title;
-  if (it.off) { b.disabled = true; b.title = it.label + ' (coming in a later update)'; return b; }
+  if (it.off) { b.disabled = true; b.title = it.title || it.label + ' (coming in a later update)'; return b; }
   if (it.st) b.dataset.state = it.cmd;
+  if (it.flag) b.dataset.flag = it.flag;
+  if (it.tool) b.dataset.tool = it.arg;
   b.addEventListener('mousedown', e => e.preventDefault());
   b.addEventListener('click', () => run(it.cmd, tab, it.arg));
   return b;
@@ -503,29 +555,49 @@ function renderRibbon(tab) {
 }
 function refreshState() {
   $$('.rb[data-state]').forEach(b => { let on = false; try { on = document.queryCommandState(b.dataset.state); } catch (e) { /* ignore */ } b.classList.toggle('on', on); });
+  const t = activeTab() || {};
+  $$('.rb[data-flag]').forEach(b => { const v = t[b.dataset.flag]; b.classList.toggle('on', !!v && v !== 'none'); });
+  $$('.rb[data-tool]').forEach(b => b.classList.toggle('on', t.tool === b.dataset.tool));
 }
 document.addEventListener('selectionchange', () => {
-  const page = $('#page'); if (!page) return;
+  if (!$('#page')) return;
   const s = getSelection();
-  if (s.rangeCount && page.contains(s.anchorNode)) { lastRange = s.getRangeAt(0).cloneRange(); refreshState(); }
+  const host = s.rangeCount && s.anchorNode ? (s.anchorNode.nodeType === 1 ? s.anchorNode : s.anchorNode.parentElement) : null;
+  const root = host && host.closest('#page, #hfHead, #hfFoot');
+  if (root) { lastRange = s.getRangeAt(0).cloneRange(); lastHost = root; refreshState(); }
 });
 
 function renderWriter(tab) {
-  lastRange = null;
+  lastRange = null; lastHost = null;
   view.innerHTML = `
     <div class="ribbon" id="ribbon" style="--accent:${APPS.writer.color}"><div class="ribbon-tabs" role="tablist"></div><div class="ribbon-body"></div></div>
+    <div class="restrictbar" id="restrictBar" hidden></div>
     <div class="findbar" id="findbar" hidden>
       <input id="findIn" placeholder="Find" aria-label="Find"><input id="repIn" placeholder="Replace with" aria-label="Replace with">
       <button class="btn" id="fNext">Find next</button><button class="btn" id="fRep">Replace</button><button class="btn" id="fAll">Replace all</button>
       <button class="btn" id="fClose" aria-label="Close find">×</button>
     </div>
-    <div class="canvas"><div class="page-wrap" id="wrap"><div class="page" id="page" contenteditable="true" spellcheck="true" aria-label="Document"></div></div></div>
+    <div class="workarea">
+      <aside class="pane navpane" id="navPane" hidden></aside>
+      <div class="canvas"><div class="page-wrap" id="wrap">
+        <div class="ruler" id="ruler" hidden></div>
+        <div class="sheet" id="sheet">
+          <div class="hf hf-head" id="hfHead" contenteditable="true" data-ph="Header" hidden></div>
+          <div class="page" id="page" contenteditable="true" spellcheck="true" aria-label="Document"></div>
+          <div class="hf hf-foot" id="hfFoot" contenteditable="true" data-ph="Footer" hidden></div>
+          <div class="wm" id="wm" hidden></div><div class="pgborder" id="pgBorder" hidden></div>
+          <svg class="ink" id="ink" xmlns="http://www.w3.org/2000/svg"></svg>
+        </div>
+      </div></div>
+      <aside class="pane cmpane" id="cmPane" hidden></aside>
+    </div>
     <footer class="status"><span id="words"></span><span id="chars"></span><span id="pageinfo"></span><span class="spacer"></span><span id="zoomLabel"></span></footer>
     <style id="pageStyle"></style>`;
   renderRibbon(tab);
   const page = $('#page');
   page.innerHTML = tab.html == null ? '<h1>Untitled document</h1><p>Start typing here.</p>' : tab.html;
   page.addEventListener('input', () => touch(tab));
+  plusInit(tab);
   bindFind(tab);
   applyPage(tab); applyZoom(); updateCounts();
 }
@@ -544,16 +616,26 @@ function showBackstage(tab, section = 'info') {
   $$('.bs-item', el).forEach(b => b.addEventListener('click', () => bsGo(tab, b.dataset.k)));
   bsGo(tab, section);
 }
+function pdfOptions(tab) {
+  const [w, h] = PAGES[tab.size];
+  return { width: tab.landscape ? h : w, height: tab.landscape ? w : h, margin: tab.margin,
+    header: tab.hOn ? cleanHtml(tab.header || '') : '', footer: tab.fOn ? cleanHtml(tab.footer || '') : '' };
+}
 async function exportPdf(tab) {
   closeBackstage();
   await new Promise(r => setTimeout(r, 150));
-  const res = await window.digicre8.exportPdf({ suggestedName: baseName(tab) + '.pdf', size: tab.size, landscape: tab.landscape });
+  const res = await window.digicre8.exportPdf({ suggestedName: baseName(tab) + '.pdf', ...pdfOptions(tab) });
   if (res) toast('Created ' + res.name);
+}
+async function printPdf(tab) {
+  await new Promise(r => setTimeout(r, 150));
+  const res = await window.digicre8.printPdf(pdfOptions(tab));
+  toast(res ? 'Opened a print-ready PDF. Press Ctrl+P in the viewer to print.' : 'Could not prepare the print file');
 }
 async function bsGo(tab, k) {
   const direct = {
     save: () => saveTab(tab, false), saveas: () => saveTab(tab, true),
-    print: () => setTimeout(() => window.print(), 150), close: () => closeTab(tab.id)
+    print: () => printPdf(tab), close: () => closeTab(tab.id)
   };
   if (direct[k]) { closeBackstage(); return direct[k](); }
   $$('.bs-item').forEach(b => b.classList.toggle('on', b.dataset.k === k));
@@ -595,17 +677,18 @@ async function openFileDialog(path) {
   const res = await window.digicre8.openFile(typeof path === 'string' ? path : undefined);
   if (!res) return;
   state.settings.recent = res.recent;
-  let html;
+  let html, meta = {};
   if (/\.html?$/i.test(res.name)) {
     const doc = new DOMParser().parseFromString(res.content, 'text/html');
     doc.querySelectorAll('script, iframe, object, embed').forEach(n => n.remove());
     doc.querySelectorAll('*').forEach(n => [...n.attributes].forEach(at => { if (/^on/i.test(at.name)) n.removeAttribute(at.name); }));
-    html = doc.body.innerHTML;
+    meta = readMeta(doc);
+    html = cleanHtml(doc.body.innerHTML);
   } else {
     html = res.content.split(/\r?\n/).map(l => `<p>${esc(l) || '<br>'}</p>`).join('');
   }
   const cur = activeTab();
-  const extra = { title: res.name, path: res.path, html, dirty: false, ribbon: 'Home' };
+  const extra = { ...meta, title: res.name, path: res.path, html, dirty: false, ribbon: 'Home' };
   if (cur && cur.app === 'home') { Object.assign(cur, extra, { app: 'writer' }); render(); }
   else newTab('writer', extra);
   toast('Opened ' + res.name);
@@ -613,10 +696,12 @@ async function openFileDialog(path) {
 async function saveTab(tab, saveAs) {
   if (tab.app !== 'writer') return;
   const page = $('#page');
+  const restorePreview = plusBeforeSave(tab);
   tab.html = page.innerHTML;
   const isTxt = tab.path && /\.txt$/i.test(tab.path);
   const content = isTxt ? page.innerText :
-    `<!DOCTYPE html>\n<html><head><meta charset="utf-8"><title>${esc(baseName(tab))}</title>\n<style>body{font-family:"Segoe UI",sans-serif;line-height:1.3;max-width:800px;margin:40px auto;padding:0 24px}table{border-collapse:collapse}td,th{border:1px solid #b9bdd0;padding:6px 10px}img{max-width:100%}</style></head>\n<body>\n${tab.html}\n</body></html>`;
+    `<!DOCTYPE html>\n<html><head><meta charset="utf-8">${docMetaTag(tab)}<title>${esc(baseName(tab))}</title>\n<style>body{font-family:"Segoe UI",sans-serif;line-height:1.3;max-width:800px;margin:40px auto;padding:0 24px}table{border-collapse:collapse}td,th{border:1px solid #b9bdd0;padding:6px 10px}img{max-width:100%}</style></head>\n<body>\n${tab.html}\n</body></html>`;
+  restorePreview();
   const res = await window.digicre8.saveFile({ path: tab.path, content, suggestedName: baseName(tab) + '.html', saveAs });
   if (!res) return;
   tab.path = res.path; tab.title = res.name; tab.dirty = false;
@@ -657,7 +742,7 @@ document.addEventListener('keydown', e => {
   else if (k === 'w') { e.preventDefault(); if (tab) closeTab(tab.id); }
   else if (k === 'o') { e.preventDefault(); openFileDialog(); }
   else if (k === 's' && writer) { e.preventDefault(); saveTab(tab, e.shiftKey); }
-  else if (k === 'p' && writer) { e.preventDefault(); window.print(); }
+  else if (k === 'p' && writer) { e.preventDefault(); printPdf(tab); }
   else if (k === 'f' && writer) { e.preventDefault(); openFind(false); }
   else if (k === 'h' && writer) { e.preventDefault(); openFind(true); }
   else if (k === 'y' && writer) { e.preventDefault(); exec('redo'); }

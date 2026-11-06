@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, Menu, nativeTheme } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, Menu, nativeTheme, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -99,24 +99,56 @@ ipcMain.handle('file:save', async (_e, { path: filePath, content, suggestedName,
 
 ipcMain.handle('edit:paste', () => { if (win) win.webContents.paste(); });
 
-const PDF_SIZES = ['A4', 'A5', 'Letter', 'Legal'];
-ipcMain.handle('file:exportPdf', async (_e, { suggestedName, size, landscape }) => {
+const clamp = (v, lo, hi, d) => Math.min(hi, Math.max(lo, Number.isFinite(+v) ? +v : d));
+function templateHtml(html, margin) {
+  const safe = String(html || '')
+    .replace(/<\s*(script|style|iframe|object|embed)[\s\S]*?<\s*\/\s*\1\s*>/gi, '')
+    .replace(/\son\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+    .replace(/\{page\}/g, '<span class="pageNumber"></span>')
+    .replace(/\{pages\}/g, '<span class="totalPages"></span>')
+    .replace(/\{date\}/g, '<span class="date"></span>')
+    .replace(/\{title\}/g, '<span class="title"></span>');
+  return `<div style="font-family:'Segoe UI',Arial,sans-serif;font-size:9px;color:#444;width:100%;box-sizing:border-box;padding:0 ${margin}px">${safe}</div>`;
+}
+function makePdf({ width, height, margin, header, footer }) {
+  const w = clamp(width, 100, 4000, 794), h = clamp(height, 100, 4000, 1123), m = clamp(margin, 0, 400, 96);
+  return win.webContents.printToPDF({
+    pageSize: { width: w / 96, height: h / 96 },
+    printBackground: true,
+    preferCSSPageSize: true,
+    displayHeaderFooter: !!(header || footer),
+    headerTemplate: templateHtml(header, m),
+    footerTemplate: templateHtml(footer, m)
+  });
+}
+
+ipcMain.handle('file:exportPdf', async (_e, opts) => {
   const res = await dialog.showSaveDialog(win, {
-    defaultPath: suggestedName || 'Document.pdf',
+    defaultPath: (opts && opts.suggestedName) || 'Document.pdf',
     filters: [{ name: 'PDF document', extensions: ['pdf'] }]
   });
   if (res.canceled || !res.filePath) return null;
   try {
-    const data = await win.webContents.printToPDF({
-      pageSize: PDF_SIZES.includes(size) ? size : 'A4',
-      landscape: !!landscape,
-      printBackground: true,
-      preferCSSPageSize: true
-    });
-    fs.writeFileSync(res.filePath, data);
+    fs.writeFileSync(res.filePath, await makePdf(opts || {}));
     return { path: res.filePath, name: path.basename(res.filePath) };
   } catch (e) {
     dialog.showErrorBox('Could not create PDF', e.message);
     return null;
   }
+});
+
+ipcMain.handle('file:printPdf', async (_e, opts) => {
+  try {
+    const tmp = path.join(app.getPath('temp'), `DigiCre8-print-${Date.now()}.pdf`);
+    fs.writeFileSync(tmp, await makePdf(opts || {}));
+    const err = await shell.openPath(tmp);
+    return err ? null : { path: tmp };
+  } catch (e) {
+    dialog.showErrorBox('Could not prepare print file', e.message);
+    return null;
+  }
+});
+
+ipcMain.handle('open:external', (_e, url) => {
+  if (typeof url === 'string' && /^(https?:\/\/|mailto:)/i.test(url)) return shell.openExternal(url);
 });

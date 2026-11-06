@@ -9,17 +9,17 @@ npm start
 ```
 
 ## Build the Windows installer
-Locally: `npm run dist` (creates `dist/DigiCre8 Office Setup 0.2.0.exe`).
+Locally: `npm run dist` (creates `dist/DigiCre8 Office Setup 0.3.0.exe`).
 
 On GitHub: push the repo, then either
 - run the "Build Windows installer" workflow from the Actions tab, or
-- tag a release: `git tag v0.2.0 && git push origin v0.2.0` (the .exe is attached to the release).
+- tag a release: `git tag v0.3.0 && git push origin v0.3.0` (the .exe is attached to the release).
 
 Add `build/icon.ico` (256x256) before your first public release for a branded installer icon.
 
 ## Roadmap
 1. Shell and design system (this repo): launcher, tabs, ribbon, themes, open/save  
-2. Writer: swap the basic editor for TipTap, add .docx import/export, headers, images, PDF export  
+2. Writer: all ribbon features built on the current editor (v0.3); next: TipTap engine, real pagination, .docx  
 3. Sheets: grid, formula engine, charts, .xlsx  
 4. Slides: slide canvas, themes, .pptx export  
 5. Publisher and PDF tools  

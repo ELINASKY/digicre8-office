@@ -6,5 +6,7 @@ contextBridge.exposeInMainWorld('digicre8', {
   openFile: (path) => ipcRenderer.invoke('file:open', path),
   saveFile: (payload) => ipcRenderer.invoke('file:save', payload),
   exportPdf: (opts) => ipcRenderer.invoke('file:exportPdf', opts),
-  paste: () => ipcRenderer.invoke('edit:paste')
+  paste: () => ipcRenderer.invoke('edit:paste'),
+  printPdf: (opts) => ipcRenderer.invoke('file:printPdf', opts),
+  openExternal: (url) => ipcRenderer.invoke('open:external', url)
 });
