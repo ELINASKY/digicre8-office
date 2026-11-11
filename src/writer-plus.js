@@ -304,7 +304,7 @@ function parseCSV(text) {
   if (cur || row.length) { row.push(cur); rows.push(row); }
   return rows.filter(r => r.some(x => x.trim()));
 }
-const toCSV = r => [r.fields, ...r.rows].map(row => row.map(c => (/[",\n]/.test(c) ? `"${c.replace(/"/g, '""')}"` : c)).join(',')).join('\n');
+const recipientsToCSV = r => [r.fields, ...r.rows].map(row => row.map(c => (/[",\n]/.test(c) ? `"${c.replace(/"/g, '""')}"` : c)).join(',')).join('\n');
 function setRecipients(tab, text) {
   const rows = parseCSV(text);
   const fields = rows.length ? rows[0].map(f => f.trim()).filter(Boolean) : [];
@@ -727,7 +727,7 @@ Object.assign(H, {
   },
   editrecips: async tab => {
     const v = await dialog({ title: 'Recipient list (CSV)', ok: 'Save', fields: [{ label: 'First row = field names', name: 'csv', type: 'textarea', rows: 10,
-      value: tab.recipients ? toCSV(tab.recipients) : 'Name,Address\nJane Doe,12 Main Street' }] });
+      value: tab.recipients ? recipientsToCSV(tab.recipients) : 'Name,Address\nJane Doe,12 Main Street' }] });
     if (v) setRecipients(tab, v.csv);
   },
   mergefield: async tab => {

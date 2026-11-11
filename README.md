@@ -20,7 +20,7 @@ Add `build/icon.ico` (256x256) before your first public release for a branded in
 ## Roadmap
 1. Shell and design system (this repo): launcher, tabs, ribbon, themes, open/save  
 2. Writer: all ribbon features (v0.3) and Word .docx open/save (v0.4); later: TipTap engine and real pagination  
-3. Sheets: grid, formula engine, charts, .xlsx  
+3. Sheets (v0.5): grid, ~380 formula functions, charts, sort/filter, validation, conditional formats, .xlsx/.csv  
 4. Slides: slide canvas, themes, .pptx export  
 5. Publisher and PDF tools  
 6. Auto-update, code signing, settings and templates
@@ -28,5 +28,8 @@ Add `build/icon.ico` (256x256) before your first public release for a branded in
 ## Project layout
 - `main.js`: Electron main process (window, file dialogs, settings, recent files)
 - `docx-io.js`: Word (.docx) import and export (runs in the main process)
+- `xlsx-io.js`: Excel (.xlsx) import and export (runs in the main process)
+- `scripts/build-vendor.js`: bundles the formula engine into `src/vendor/` (runs automatically before start and dist)
+- `src/sheet-model.js`, `src/sheets.js`, `src/sheets-plus.js`: the Sheets data model, grid and commands
 - `preload.js`: safe bridge between the UI and the main process
 - `src/`: the interface (`index.html`, `styles.css`, `renderer.js`)

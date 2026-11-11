@@ -1,18 +1,21 @@
 {
   "name": "digicre8-office",
   "productName": "DigiCre8 Office",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "DigiCre8 Office: a creative productivity suite",
   "main": "main.js",
   "author": "DigiCre8",
   "license": "UNLICENSED",
   "scripts": {
-    "start": "electron .",
-    "dist": "electron-builder --win --publish never"
+    "build:vendor": "node scripts/build-vendor.js",
+    "start": "npm run build:vendor && electron .",
+    "dist": "npm run build:vendor && electron-builder --win --publish never"
   },
   "devDependencies": {
     "electron": "^31.7.7",
-    "electron-builder": "^24.13.3"
+    "electron-builder": "^24.13.3",
+    "esbuild": "^0.28.2",
+    "fast-formula-parser": "^1.0.19"
   },
   "build": {
     "appId": "com.digicre8.office",
@@ -25,6 +28,7 @@
       "main.js",
       "preload.js",
       "docx-io.js",
+      "xlsx-io.js",
       "src/**/*",
       "package.json"
     ],
@@ -46,6 +50,7 @@
     }
   },
   "dependencies": {
+    "exceljs": "^4.4.0",
     "html-to-docx": "^1.8.0",
     "jszip": "^3.10.2",
     "mammoth": "^1.13.0"

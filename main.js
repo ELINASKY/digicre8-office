@@ -1,7 +1,8 @@
-const { app, BrowserWindow, ipcMain, dialog, Menu, nativeTheme, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, Menu, nativeTheme, shell, clipboard } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { importDocx, exportDocx } = require('./docx-io');
+const { importXlsx, exportXlsx } = require('./xlsx-io');
 
 const storeFile = () => path.join(app.getPath('userData'), 'settings.json');
 const defaults = { theme: 'system', recent: [] };
@@ -66,7 +67,7 @@ ipcMain.handle('file:open', async (_e, requestedPath) => {
   } else {
     const res = await dialog.showOpenDialog(win, {
       properties: ['openFile'],
-      filters: [{ name: 'Documents', extensions: ['docx', 'html', 'htm', 'txt', 'md'] }, { name: 'Word documents', extensions: ['docx'] }, { name: 'All files', extensions: ['*'] }]
+      filters: [{ name: 'All supported files', extensions: ['docx', 'xlsx', 'csv', 'tsv', 'dcsheet', 'html', 'htm', 'txt', 'md'] }, { name: 'Word documents', extensions: ['docx'] }, { name: 'Excel workbooks', extensions: ['xlsx'] }, { name: 'CSV and text', extensions: ['csv', 'tsv', 'txt'] }, { name: 'All files', extensions: ['*'] }]
     });
     if (res.canceled || !res.filePaths[0]) return null;
     filePath = res.filePaths[0];
@@ -78,8 +79,15 @@ ipcMain.handle('file:open', async (_e, requestedPath) => {
       const recent = addRecent(filePath, 'writer');
       return { path: filePath, name: path.basename(filePath), kind: 'docx', content: doc.html, meta: doc.meta, recent };
     }
+    if (/\.xlsx$/i.test(filePath)) {
+      const model = await importXlsx(filePath);
+      const recent = addRecent(filePath, 'sheets');
+      return { path: filePath, name: path.basename(filePath), kind: 'xlsx', model, recent };
+    }
+    if (fs.statSync(filePath).size > 60e6) throw new Error('That file is larger than 60 MB.');
     const content = fs.readFileSync(filePath, 'utf8');
-    const recent = addRecent(filePath, 'writer');
+    const sheetFile = /\.(csv|tsv|dcsheet)$/i.test(filePath);
+    const recent = addRecent(filePath, sheetFile ? 'sheets' : 'writer');
     return { path: filePath, name: path.basename(filePath), content, recent };
   } catch (e) {
     dialog.showErrorBox('Could not open file', `${path.basename(filePath)} could not be read.\n${e.message}`);
@@ -172,7 +180,10 @@ ipcMain.handle('file:chooseSave', async (_e, { suggestedName, filters } = {}) =>
   });
   if (res.canceled || !res.filePath) return null;
   let target = res.filePath;
-  if (!/\.(docx|html?|txt)$/i.test(target)) target += '.docx';
+  if (!/\.(docx|xlsx|csv|dcsheet|html?|txt)$/i.test(target)) {
+    const hint = typeof suggestedName === 'string' ? (suggestedName.match(/\.(docx|xlsx|csv|dcsheet|html?|txt)$/i) || [])[0] : null;
+    target += hint || '.docx';
+  }
   approved.add(target);
   return target;
 });
@@ -193,3 +204,20 @@ ipcMain.handle('file:saveDocx', async (_e, opts) => {
     return null;
   }
 });
+
+ipcMain.handle('file:saveXlsx', async (_e, opts) => {
+  const target = opts && opts.path;
+  if (typeof target !== 'string' || !/\.xlsx$/i.test(target) || !approved.has(target)) return null;
+  try {
+    const buf = await exportXlsx(opts.model || {}, Array.isArray(opts.images) ? opts.images : []);
+    fs.writeFileSync(target, buf);
+    const recent = addRecent(target, 'sheets');
+    return { path: target, name: path.basename(target), recent };
+  } catch (e) {
+    dialog.showErrorBox('Could not save Excel file', e.message);
+    return null;
+  }
+});
+
+ipcMain.handle('clipboard:read', () => clipboard.readText());
+ipcMain.handle('clipboard:write', (_e, text) => { if (typeof text === 'string' && text.length < 50e6) clipboard.writeText(text); });

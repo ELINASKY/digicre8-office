@@ -3,7 +3,7 @@
 /* ================= Registry & state ================= */
 const APPS = {
   writer:    { name: 'DigiCre8 Writer',    short: 'Wr', color: '#4F6BF2', desc: 'Letters, reports and long documents', ready: true },
-  sheets:    { name: 'DigiCre8 Sheets',    short: 'Sh', color: '#12A37A', desc: 'Budgets, schedules and data', phase: 3 },
+  sheets:    { name: 'DigiCre8 Sheets',    short: 'Sh', color: '#12A37A', desc: 'Budgets, schedules and data', ready: true },
   slides:    { name: 'DigiCre8 Slides',    short: 'Sl', color: '#F2701B', desc: 'Pitches, decks and presentations', phase: 4 },
   publisher: { name: 'DigiCre8 Publisher', short: 'Pu', color: '#D63A7C', desc: 'Flyers, brochures and print layouts', phase: 5 },
   pdf:       { name: 'DigiCre8 PDF',       short: 'Pd', color: '#7A4FE0', desc: 'Read, merge and sign PDF files', phase: 5 }
@@ -13,7 +13,7 @@ const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const view = $('#view');
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-const baseName = t => t.title.replace(/\.(html?|txt|docx)$/i, '');
+const baseName = t => t.title.replace(/\.(html?|txt|docx|xlsx|csv|tsv|dcsheet)$/i, '');
 
 function newTab(app, extra = {}) {
   const tab = { id: state.nextId++, app, title: app === 'home' ? 'Home' : 'Untitled', path: null, dirty: false, html: null,
@@ -158,7 +158,7 @@ function renderHome() {
 }
 function openApp(key) {
   const a = APPS[key], home = activeTab();
-  const title = a.ready ? 'Untitled document' : a.name;
+  const title = a.ready ? (key === 'sheets' ? 'Untitled workbook' : 'Untitled document') : a.name;
   if (home && home.app === 'home') { Object.assign(home, { app: key, title, html: null, ribbon: 'Home', dirty: false }); render(); }
   else newTab(key, { title });
 }
@@ -444,12 +444,12 @@ const H = {
     <dt>Ctrl+N / T</dt><dd>New tab</dd><dt>Ctrl+O</dt><dd>Open</dd><dt>Ctrl+S</dt><dd>Save</dd><dt>Ctrl+Shift+S</dt><dd>Save as</dd>
     <dt>Ctrl+P</dt><dd>Print (via PDF)</dd><dt>Ctrl+F / H</dt><dd>Find / Replace</dd><dt>Ctrl+B / I / U</dt><dd>Bold / Italic / Underline</dd>
     <dt>Ctrl+Z / Y</dt><dd>Undo / Redo</dd><dt>Ctrl+W</dt><dd>Close tab</dd></dl>` }),
-  about: () => dialog({ title: 'About DigiCre8 Office', ok: '', html: '<p>DigiCre8 Office, version 0.4.0.<br>A creative productivity suite.</p>' })
+  about: () => dialog({ title: 'About DigiCre8 Office', ok: '', html: '<p>DigiCre8 Office, version 0.5.0.<br>A creative productivity suite.</p>' })
 };
 function run(cmd, tab, arg) {
-  const f = H[cmd];
+  const f = (tab.app === 'sheets' ? SC : H)[cmd];
   if (f) return f(tab, arg);
-  exec(cmd, arg);
+  if (tab.app === 'writer') exec(cmd, arg);
 }
 
 /* ================= Writer: Find & Replace ================= */
@@ -517,6 +517,7 @@ function itemEl(it, tab) {
   if (it.off) { b.disabled = true; b.title = it.title || it.label + ' (coming in a later update)'; return b; }
   if (it.st) b.dataset.state = it.cmd;
   if (it.flag) b.dataset.flag = it.flag;
+  if (it.sty) b.dataset.sty = it.sty;
   if (it.tool) b.dataset.tool = it.arg;
   b.addEventListener('mousedown', e => e.preventDefault());
   b.addEventListener('click', () => run(it.cmd, tab, it.arg));
@@ -525,25 +526,28 @@ function itemEl(it, tab) {
 function renderRibbon(tab) {
   const tabsEl = $('.ribbon-tabs'), body = $('.ribbon-body');
   tabsEl.innerHTML = ''; body.innerHTML = '';
+  const sheets = tab.app === 'sheets', RB = sheets ? SHEET_RIBBON : RIBBON;
+  if (sheets) syncFlags(tab);
   for (const [ic, t, c] of [['save', 'Save (Ctrl+S)', 'save'], ['undo', 'Undo (Ctrl+Z)', 'undo'], ['redo', 'Redo (Ctrl+Y)', 'redo']]) {
     const b = document.createElement('button');
     b.className = 'qat'; b.title = t; b.setAttribute('aria-label', t); b.innerHTML = svg(ic);
     b.addEventListener('mousedown', e => e.preventDefault());
-    b.addEventListener('click', () => c === 'save' ? saveTab(tab, false) : run(c, tab));
+    b.addEventListener('click', () => c === 'save' ? (sheets ? saveSheet(tab, false) : saveTab(tab, false)) : run(c, tab));
     tabsEl.appendChild(b);
   }
   const file = document.createElement('button');
   file.className = 'ribbon-tab file'; file.textContent = 'File';
-  file.addEventListener('click', () => showBackstage(tab));
+  file.addEventListener('click', () => (sheets ? showSheetBackstage(tab) : showBackstage(tab)));
   tabsEl.appendChild(file);
-  for (const name of Object.keys(RIBBON)) {
+  for (const name of Object.keys(RB)) {
     const b = document.createElement('button');
     b.className = 'ribbon-tab' + (name === tab.ribbon ? ' active' : '');
     b.textContent = name;
     b.addEventListener('click', () => { tab.ribbon = name; renderRibbon(tab); });
     tabsEl.appendChild(b);
   }
-  for (const [gname, items] of RIBBON[tab.ribbon]) {
+  if (!RB[tab.ribbon]) tab.ribbon = 'Home';
+  for (const [gname, items] of RB[tab.ribbon]) {
     const g = document.createElement('div'); g.className = 'group';
     const box = document.createElement('div'); box.className = 'group-items';
     items.forEach(it => box.appendChild(itemEl(it, tab)));
@@ -558,6 +562,10 @@ function refreshState() {
   const t = activeTab() || {};
   $$('.rb[data-flag]').forEach(b => { const v = t[b.dataset.flag]; b.classList.toggle('on', !!v && v !== 'none'); });
   $$('.rb[data-tool]').forEach(b => b.classList.toggle('on', t.tool === b.dataset.tool));
+  if (t.app === 'sheets' && t.wb) {
+    const st = t.wb.cellStyle(curSheet(t), t.sel.ar, t.sel.ac);
+    $$('.rb[data-sty]').forEach(b => { const [k, v] = b.dataset.sty.split(':'); b.classList.toggle('on', v ? st[k] === v : !!st[k]); });
+  }
 }
 document.addEventListener('selectionchange', () => {
   if (!$('#page')) return;
@@ -679,6 +687,7 @@ async function openFileDialog(path) {
   const res = await window.digicre8.openFile(typeof path === 'string' ? path : undefined);
   if (!res) return;
   state.settings.recent = res.recent;
+  if (openSheetFromResult(res)) return;
   let html, meta = {};
   if (res.kind === 'docx') {
     const holder = new DOMParser().parseFromString(`<meta name="digicre8" content="${encodeURIComponent(JSON.stringify(res.meta || {}))}">`, 'text/html');
@@ -745,6 +754,7 @@ function render() {
   if (!tab) return;
   if (tab.app === 'home') renderHome();
   else if (tab.app === 'writer') renderWriter(tab);
+  else if (tab.app === 'sheets') renderSheets(tab);
   else renderSoon(tab);
 }
 
@@ -771,6 +781,8 @@ document.addEventListener('keydown', e => {
   else if (k === 'o') { e.preventDefault(); openFileDialog(); }
   else if (k === 's' && writer) { e.preventDefault(); saveTab(tab, e.shiftKey); }
   else if (k === 'p' && writer) { e.preventDefault(); printPdf(tab); }
+  else if (k === 's' && tab && tab.app === 'sheets') { e.preventDefault(); saveSheet(tab, e.shiftKey); }
+  else if (k === 'p' && tab && tab.app === 'sheets') { e.preventDefault(); printSheet(tab); }
   else if (k === 'f' && writer) { e.preventDefault(); openFind(false); }
   else if (k === 'h' && writer) { e.preventDefault(); openFind(true); }
   else if (k === 'y' && writer) { e.preventDefault(); exec('redo'); }
